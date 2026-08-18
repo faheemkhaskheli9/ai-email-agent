@@ -1,0 +1,5 @@
+[project]
+name = "ai-email-agent"
+version = "0.1.0"
+description = "Email Response AI Agent"
+requires-python = ">=3.10"
