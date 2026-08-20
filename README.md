@@ -41,6 +41,15 @@ Incoming Email -> Classification -> History Retrieval -> Draft Generation -> Hum
 2. Phase 2: History-aware response drafting
 3. Phase 3: Approval queue UI
 4. Phase 4: Structured action extraction and routing
+5. Phase 5: Evaluation, observability & deployment
+
+## Task Tracking
+
+Work is broken into phase-tagged user stories tracked as GitHub Issues, not in this file. To see what's open:
+
+    gh issue list --repo faheemkhaskheli9/ai-email-agent --state open --label type:user-story
+
+Implement Phase 1 issues first (later phases depend on it). When you start one, add label `status:in-progress`. When you finish, close it referencing the commit (e.g. `git commit -m "... Closes #4"`) and push.
 
 ## 6. Repository Structure
 
