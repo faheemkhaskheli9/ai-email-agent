@@ -4,7 +4,7 @@
 > This is an original, from-scratch build. It is not affiliated with, and does not
 > contain any code, prompts, data, or business logic from, any employer or client.
 
-![status](https://img.shields.io/badge/status-planned-lightgrey)
+![status](https://img.shields.io/badge/status-in%20progress-yellow)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
@@ -92,10 +92,15 @@ No proprietary, employer-owned, or client-identifiable data is used in this proj
 
 ## 9. Training / Execution
 
-Document the commands used to run training, ingestion, or the main pipeline, e.g.:
+Phase 1 ships the mailbox ingestion connector: it normalizes raw email into a
+common schema, skips already-ingested messages by `Message-ID`, and logs (never
+crashes on) malformed MIME. It runs against a fixture directory of `.eml`
+files by default, or a real IMAP mailbox when `IMAP_HOST`/`IMAP_USER`/
+`IMAP_PASSWORD` are set:
 
 ```bash
-python -m src.main --config configs/default.yaml
+pip install -r requirements.txt
+PYTHONPATH=src python -m ai_email_agent.cli poll --mailbox examples/sample_mailbox --verbose
 ```
 
 ## 10. Evaluation
