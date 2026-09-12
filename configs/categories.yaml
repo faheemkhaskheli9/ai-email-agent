@@ -1,0 +1,22 @@
+# Category taxonomy for email classification (Phase 1).
+#
+# Extend the label set by editing this file — no code change required. Each
+# entry needs a unique `name` (the label the classifier must return) and a
+# `description` used to prompt the LLM.
+categories:
+  - name: support
+    description: >
+      Requests for help with an existing product or service issue, such as
+      a bug report, login trouble, or "how do I..." question.
+  - name: sales
+    description: >
+      Inquiries from a prospective or existing customer about purchasing,
+      upgrading, or getting a quote for a product or service.
+  - name: billing
+    description: >
+      Questions or disputes about invoices, payments, refunds, or
+      subscription charges.
+  - name: spam
+    description: >
+      Unsolicited bulk or promotional messages unrelated to a genuine
+      support, sales, or billing need.

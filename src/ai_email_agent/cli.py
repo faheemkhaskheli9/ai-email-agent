@@ -15,11 +15,52 @@ import os
 import sys
 from pathlib import Path
 
+from ai_email_agent.classification import OpenAIClassifierClient, classify_email
+from ai_email_agent.classification_store import JsonFileClassificationStore
 from ai_email_agent.connector import FixtureMailboxClient, ImapMailboxClient, poll_mailbox
+from ai_email_agent.models import IngestedEmail
 from ai_email_agent.seen_store import JsonFileSeenIdStore
+from ai_email_agent.taxonomy import TaxonomyError, load_categories
+
+logger = logging.getLogger("ai_email_agent.cli")
 
 
-def _run_poll(mailbox_dir: str, seen_store_path: str) -> int:
+def _classify_ingested(ingested: list[IngestedEmail], classification_store_path: str) -> None:
+    """Classify each newly-ingested email and persist the result.
+
+    Requires ``OPENAI_API_KEY``; with no key set (no paid API in this demo
+    environment) classification is skipped with an explicit message rather
+    than silently doing nothing.
+    """
+    if not ingested:
+        return
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        print("  classification skipped: no OPENAI_API_KEY set")
+        return
+
+    try:
+        categories = load_categories()
+    except TaxonomyError as exc:
+        print(f"  classification skipped: {exc}")
+        return
+
+    classifier = OpenAIClassifierClient(api_key)
+    store = JsonFileClassificationStore(Path(classification_store_path))
+    print("  classifications:")
+    for email in ingested:
+        try:
+            result = classify_email(classifier, email.subject, email.body, categories)
+        except Exception as exc:  # one bad classification must not crash the poll
+            logger.warning("classification failed for %s: %s", email.message_id, exc)
+            print(f"    - {email.message_id}: classification failed: {exc}")
+            continue
+        store.save(email.message_id, result)
+        print(f"    - {email.message_id}: {result.label} ({result.confidence:.2f})")
+
+
+def _run_poll(mailbox_dir: str, seen_store_path: str, classification_store_path: str) -> int:
     seen_store = JsonFileSeenIdStore(Path(seen_store_path))
 
     host, user, password = (
@@ -44,6 +85,8 @@ def _run_poll(mailbox_dir: str, seen_store_path: str) -> int:
     print(f"  failed: {len(result.failed)}")
     for uid, reason in result.failed:
         print(f"    - {uid}: {reason}")
+
+    _classify_ingested(result.ingested, classification_store_path)
     return 0
 
 
@@ -68,6 +111,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=".seen_ids.json",
         help="path to the JSON file tracking already-ingested message ids",
     )
+    p.add_argument(
+        "--classification-store",
+        default=".classifications.json",
+        help="path to the JSON file tracking classification results",
+    )
     return parser
 
 
@@ -75,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     if args.command == "poll":
-        return _run_poll(args.mailbox, args.seen_store)
+        return _run_poll(args.mailbox, args.seen_store, args.classification_store)
     return 2
 
 

@@ -1,4 +1,7 @@
 # Phase 1 ingestion uses only the standard library (imaplib, email).
+# Phase 1 classification adds:
+openai>=1.40
+pyyaml>=6.0
 
 # dev / test
 pytest>=7.0
