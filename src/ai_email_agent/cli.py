@@ -18,6 +18,7 @@ from pathlib import Path
 from ai_email_agent.classification import OpenAIClassifierClient, classify_email
 from ai_email_agent.classification_store import JsonFileClassificationStore
 from ai_email_agent.connector import FixtureMailboxClient, ImapMailboxClient, poll_mailbox
+from ai_email_agent.db import EmailStoreError, PostgresEmailStore
 from ai_email_agent.models import IngestedEmail
 from ai_email_agent.seen_store import JsonFileSeenIdStore
 from ai_email_agent.taxonomy import TaxonomyError, load_categories
@@ -25,13 +26,40 @@ from ai_email_agent.taxonomy import TaxonomyError, load_categories
 logger = logging.getLogger("ai_email_agent.cli")
 
 
-def _classify_ingested(ingested: list[IngestedEmail], classification_store_path: str) -> None:
+def _open_email_store(database_url: str | None) -> PostgresEmailStore | None:
+    """Open the PostgreSQL email store, or None if persistence isn't configured.
+
+    Mirrors the OPENAI_API_KEY convention below: no `$DATABASE_URL` (nothing
+    provisioned in this demo environment) skips persistence explicitly rather
+    than crashing the poll.
+    """
+    if not database_url:
+        print("  persistence skipped: no DATABASE_URL set")
+        return None
+    try:
+        return PostgresEmailStore(database_url)
+    except EmailStoreError as exc:
+        print(f"  persistence skipped: {exc}")
+        return None
+
+
+def _classify_ingested(
+    ingested: list[IngestedEmail],
+    classification_store_path: str,
+    email_store: PostgresEmailStore | None,
+) -> None:
     """Classify each newly-ingested email and persist the result.
 
     Requires ``OPENAI_API_KEY``; with no key set (no paid API in this demo
     environment) classification is skipped with an explicit message rather
-    than silently doing nothing.
+    than silently doing nothing. Ingestion into ``email_store`` (if
+    configured) happens either way, so history/queue features have a record
+    even for emails that failed or were skipped for classification.
     """
+    for email in ingested:
+        if email_store is not None:
+            email_store.upsert_email(email, status="ingested")
+
     if not ingested:
         return
 
@@ -57,11 +85,21 @@ def _classify_ingested(ingested: list[IngestedEmail], classification_store_path:
             print(f"    - {email.message_id}: classification failed: {exc}")
             continue
         store.save(email.message_id, result)
+        if email_store is not None:
+            email_store.upsert_email(
+                email, category=result.label, confidence=result.confidence, status="classified"
+            )
         print(f"    - {email.message_id}: {result.label} ({result.confidence:.2f})")
 
 
-def _run_poll(mailbox_dir: str, seen_store_path: str, classification_store_path: str) -> int:
+def _run_poll(
+    mailbox_dir: str,
+    seen_store_path: str,
+    classification_store_path: str,
+    database_url: str | None,
+) -> int:
     seen_store = JsonFileSeenIdStore(Path(seen_store_path))
+    email_store = _open_email_store(database_url)
 
     host, user, password = (
         os.environ.get("IMAP_HOST"),
@@ -86,7 +124,7 @@ def _run_poll(mailbox_dir: str, seen_store_path: str, classification_store_path:
     for uid, reason in result.failed:
         print(f"    - {uid}: {reason}")
 
-    _classify_ingested(result.ingested, classification_store_path)
+    _classify_ingested(result.ingested, classification_store_path, email_store)
     return 0
 
 
@@ -116,6 +154,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=".classifications.json",
         help="path to the JSON file tracking classification results",
     )
+    p.add_argument(
+        "--database-url",
+        default=os.environ.get("DATABASE_URL"),
+        help="SQLAlchemy URL for the emails table (e.g. postgresql://... or sqlite:///...); "
+        "defaults to $DATABASE_URL, and persistence is skipped if neither is set",
+    )
     return parser
 
 
@@ -123,7 +167,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
     if args.command == "poll":
-        return _run_poll(args.mailbox, args.seen_store, args.classification_store)
+        return _run_poll(
+            args.mailbox, args.seen_store, args.classification_store, args.database_url
+        )
     return 2
 
 

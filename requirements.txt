@@ -3,5 +3,10 @@
 openai>=1.40
 pyyaml>=6.0
 
+# Phase 1 persistence: SQLAlchemy Core for the emails schema/store, portable
+# between `sqlite:///...` (CPU-only local dev/tests) and a real Postgres URL.
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+
 # dev / test
 pytest>=7.0

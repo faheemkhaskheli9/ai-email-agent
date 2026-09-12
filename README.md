@@ -103,6 +103,18 @@ pip install -r requirements.txt
 PYTHONPATH=src python -m ai_email_agent.cli poll --mailbox examples/sample_mailbox --verbose
 ```
 
+Ingested and classified emails are persisted to a `emails` table (unique on
+`Message-ID`, indexed on thread id and sender) when `$DATABASE_URL` is set —
+a real `postgresql://...` URL in production, or a `sqlite:///...` URL for
+local dev/tests (no Postgres server required). Create/verify the schema with:
+
+```bash
+python scripts/init_db.py --database-url sqlite:///dev.db   # or $DATABASE_URL
+```
+
+Re-running the poller against the same mailbox never duplicates rows: the
+unique constraint on `Message-ID` makes re-ingestion an update, not an insert.
+
 ## 10. Evaluation
 
 Document evaluation metrics and how to reproduce them here (see `docs/evaluation.md`).
