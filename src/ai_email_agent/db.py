@@ -211,3 +211,14 @@ class PostgresEmailStore:
                 .order_by(emails_table.c.created_at)
             ).all()
         return [_row_to_record(r) for r in rows]
+
+    def list_by_status(self, status: str) -> list[EmailRecord]:
+        """Fetch every email currently in `status` (e.g. `needs_review`) --
+        the manual-review queue this backs (issue #6)."""
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(emails_table)
+                .where(emails_table.c.status == status)
+                .order_by(emails_table.c.created_at)
+            ).all()
+        return [_row_to_record(r) for r in rows]

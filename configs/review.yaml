@@ -1,0 +1,3 @@
+# Confidence threshold below which a classification is routed to manual
+# review instead of auto-proceeding (issue #6). 0.0-1.0.
+confidence_threshold: 0.6

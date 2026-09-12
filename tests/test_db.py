@@ -111,6 +111,20 @@ def test_list_by_sender_returns_matching_emails(store):
     assert [r.message_id for r in records] == ["m1"]
 
 
+def test_list_by_status_returns_matching_emails(store):
+    store.upsert_email(_email(message_id="m1"), status="needs_review")
+    store.upsert_email(_email(message_id="m2"), status="classified")
+    store.upsert_email(_email(message_id="m3"), status="needs_review")
+
+    records = store.list_by_status("needs_review")
+    assert [r.message_id for r in records] == ["m1", "m3"]
+
+
+def test_list_by_status_empty_when_none_match(store):
+    store.upsert_email(_email(message_id="m1"), status="classified")
+    assert store.list_by_status("needs_review") == []
+
+
 def test_unreachable_database_raises_clear_error():
     with pytest.raises(EmailStoreError, match="could not connect"):
         PostgresEmailStore("postgresql://user:pass@nonexistent-host-xyz/db")

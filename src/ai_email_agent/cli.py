@@ -20,6 +20,7 @@ from ai_email_agent.classification_store import JsonFileClassificationStore
 from ai_email_agent.connector import FixtureMailboxClient, ImapMailboxClient, poll_mailbox
 from ai_email_agent.db import EmailStoreError, PostgresEmailStore
 from ai_email_agent.models import IngestedEmail
+from ai_email_agent.review import ReviewConfigError, STATUS_NEEDS_REVIEW, classification_status, load_review_config
 from ai_email_agent.seen_store import JsonFileSeenIdStore
 from ai_email_agent.taxonomy import TaxonomyError, load_categories
 
@@ -74,6 +75,12 @@ def _classify_ingested(
         print(f"  classification skipped: {exc}")
         return
 
+    try:
+        review_config = load_review_config()
+    except ReviewConfigError as exc:
+        print(f"  classification skipped: {exc}")
+        return
+
     classifier = OpenAIClassifierClient(api_key)
     store = JsonFileClassificationStore(Path(classification_store_path))
     print("  classifications:")
@@ -85,11 +92,13 @@ def _classify_ingested(
             print(f"    - {email.message_id}: classification failed: {exc}")
             continue
         store.save(email.message_id, result)
+        status = classification_status(result.confidence, review_config)
         if email_store is not None:
             email_store.upsert_email(
-                email, category=result.label, confidence=result.confidence, status="classified"
+                email, category=result.label, confidence=result.confidence, status=status
             )
-        print(f"    - {email.message_id}: {result.label} ({result.confidence:.2f})")
+        flag = " [needs_review]" if status == STATUS_NEEDS_REVIEW else ""
+        print(f"    - {email.message_id}: {result.label} ({result.confidence:.2f}){flag}")
 
 
 def _run_poll(
@@ -160,7 +169,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="SQLAlchemy URL for the emails table (e.g. postgresql://... or sqlite:///...); "
         "defaults to $DATABASE_URL, and persistence is skipped if neither is set",
     )
+
+    rq = sub.add_parser(
+        "review-queue", parents=[common], help="list emails currently flagged needs_review"
+    )
+    rq.add_argument(
+        "--database-url",
+        default=os.environ.get("DATABASE_URL"),
+        help="SQLAlchemy URL for the emails table; defaults to $DATABASE_URL",
+    )
     return parser
+
+
+def _run_review_queue(database_url: str | None) -> int:
+    email_store = _open_email_store(database_url)
+    if email_store is None:
+        return 1
+    pending = email_store.list_by_status(STATUS_NEEDS_REVIEW)
+    print(f"needs_review: {len(pending)}")
+    for record in pending:
+        print(
+            f"  - {record.message_id}: {record.subject!r} from {record.sender} "
+            f"(category={record.category}, confidence={record.confidence})"
+        )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -170,6 +202,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_poll(
             args.mailbox, args.seen_store, args.classification_store, args.database_url
         )
+    if args.command == "review-queue":
+        return _run_review_queue(args.database_url)
     return 2
 
 

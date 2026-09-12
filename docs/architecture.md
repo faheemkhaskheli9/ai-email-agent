@@ -21,3 +21,8 @@ Incoming Email -> Classification -> History Retrieval -> Draft Generation -> Hum
   and similar projects in this portfolio for the general pattern).
 - Prefer configuration-driven pipelines (YAML/JSON in `configs/`) over hardcoded
   parameters so experiments are reproducible.
+- A classification below `configs/review.yaml`'s `confidence_threshold`
+  (`ai_email_agent.review`) is routed to a `needs_review` status instead of
+  `classified` — never let a low-confidence label silently drive a draft or
+  routing decision. `PostgresEmailStore.list_by_status` / the
+  `review-queue` CLI command is the queryable list this backs.
